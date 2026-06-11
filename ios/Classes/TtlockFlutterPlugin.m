@@ -43,17 +43,29 @@ typedef NS_ENUM(NSInteger, ErrorDevice) {
     static TtlockFlutterPlugin *instance = nil;
     if (!instance) {
         instance = [[self alloc] init];
+    }
+    return instance;
+}
+
+// Defer the TTLock Bluetooth setup to the first plugin call instead of plugin
+// registration. Creating the Bluetooth manager during registration makes iOS
+// show the Bluetooth permission dialog immediately at app launch (before any
+// app UI); setting it up lazily lets the app decide when that dialog appears
+// (e.g. only when the user starts scanning for locks).
++ (void)setupBluetoothIfNeeded {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
         [TTLock setupBluetooth:^(TTBluetoothState state) {
             if (state != TTBluetoothStatePoweredOn) {
                 NSLog(@"####### Bluetooth is off or un unauthorized ########");
             }
         }];
-    }
-    return instance;
+    });
 }
 
 #pragma mark  - FlutterPlugin
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result{
+    [TtlockFlutterPlugin setupBluetoothIfNeeded];
     __weak TtlockFlutterPlugin *weakSelf = self;
     NSString *command = call.method;
     NSObject *arguments = call.arguments;
