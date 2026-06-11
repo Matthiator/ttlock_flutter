@@ -47,11 +47,10 @@ typedef NS_ENUM(NSInteger, ErrorDevice) {
     return instance;
 }
 
-// Defer the TTLock Bluetooth setup to the first plugin call instead of plugin
-// registration. Creating the Bluetooth manager during registration makes iOS
-// show the Bluetooth permission dialog immediately at app launch (before any
-// app UI); setting it up lazily lets the app decide when that dialog appears
-// (e.g. only when the user starts scanning for locks).
+// Defer the TTLock Bluetooth setup until the app invokes a command that needs
+// Bluetooth. Creating the Bluetooth manager during plugin registration makes
+// iOS show the permission dialog at app launch, before the host app can present
+// the request in context.
 + (void)setupBluetoothIfNeeded {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -63,11 +62,31 @@ typedef NS_ENUM(NSInteger, ErrorDevice) {
     });
 }
 
++ (BOOL)commandNeedsBluetoothSetup:(NSString *)command {
+    NSArray *commandsWithoutBluetoothSetup = @[
+        command_setup_plugin,
+        command_get_bluetooth_state,
+        command_get_blutetooth_scan_state,
+        command_function_support,
+        command_stop_scan_lock,
+        command_stop_scan_gateway,
+        command_remote_key_stop_scan,
+        command_door_sensor_stop_scan,
+        command_remote_keypad_stop_scan,
+        command_electric_meter_stop_scan,
+        command_water_meter_stop_scan
+    ];
+    return ![commandsWithoutBluetoothSetup containsObject:command];
+}
+
 #pragma mark  - FlutterPlugin
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result{
-    [TtlockFlutterPlugin setupBluetoothIfNeeded];
     __weak TtlockFlutterPlugin *weakSelf = self;
     NSString *command = call.method;
+    BOOL needsBluetoothSetup = [TtlockFlutterPlugin commandNeedsBluetoothSetup:command];
+    if (needsBluetoothSetup) {
+        [TtlockFlutterPlugin setupBluetoothIfNeeded];
+    }
     NSObject *arguments = call.arguments;
     TtlockModel *lockModel = nil;
     if ([arguments isKindOfClass:NSDictionary.class]) {
@@ -77,7 +96,7 @@ typedef NS_ENUM(NSInteger, ErrorDevice) {
         lockModel.lockData = (NSString *)arguments;
     }
     
-    if (TTLock.bluetoothState != TTBluetoothStatePoweredOn) {
+    if (needsBluetoothSetup && TTLock.bluetoothState != TTBluetoothStatePoweredOn) {
         NSLog(@"####### Bluetooth is off or un unauthorized ########");
     }
     
@@ -1820,4 +1839,3 @@ typedef NS_ENUM(NSInteger, ErrorDevice) {
 }
 
 @end
-
